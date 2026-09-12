@@ -226,6 +226,7 @@
       <label>Copago<input type="number" id="fCop" step="0.01"></label>
       <label>Domiciliarias<input type="number" id="fDom" step="0.01"></label>
       <label class="full">Monto cobrado <span style="font-weight:400">(lo que realmente cobraste; dejalo en 0 si aún no cobraste)</span><input type="number" id="fCobM" step="0.01"></label>
+      <label class="full">Fecha de cobro <span style="font-weight:400">(cuándo te pagaron; sirve para saber en qué mes ingresó)</span><input type="date" id="fCobF"></label>
       <label class="full">Observaciones <span style="font-weight:400">(ej: N° de Orden de Pago, comisión del Colegio/Asoc. Médica, etc.)</span><textarea id="fObs" rows="2"></textarea></label>
     </div>
     <div class="foot">
@@ -678,6 +679,11 @@ document.getElementById('regTable').addEventListener('click',e=>{
     if(r===null) return;
     const v=parseFloat((r+'').replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''));
     f.cobradoMonto = isNaN(v)?0:v; f.cobrado = f.cobradoMonto>0.5;
+    if(f.cobrado){
+      const hoy=new Date().toISOString().slice(0,10);
+      const rf=prompt('¿En qué fecha te pagaron?\n\nSi fue hoy, tocá Aceptar.\n(Formato: AAAA-MM-DD, ej: '+hoy+')', f.cobradoFecha||hoy);
+      f.cobradoFecha = (rf && rf.trim()) ? rf.trim() : (f.cobradoFecha||hoy);
+    } else { f.cobradoFecha=''; }
     save(); renderRegistro(); renderTablero();
   }
   if(ed){ openFac(ed.dataset.edit); }
@@ -698,6 +704,7 @@ function openFac(id){
   S('fPag',f.pagador);S('fFecha',f.fecha);S('fTipo',f.tipo);S('fNro',f.nro);S('fSub',f.subtotal);
   S('fRehab',f.rehab);S('fFer',f.ferula);S('fPrr',f.prr);S('fReca',f.reca);S('fCop',f.copago);S('fDom',f.domic);
   S('fCobM', id? (f.cobradoMonto||0) : 0);
+  S('fCobF', id? (f.cobradoFecha||'') : '');
   S('fObs', f.obs);
   recalcTotal();
   document.getElementById('fDel').style.display = id?'':'none';
@@ -722,7 +729,7 @@ document.getElementById('fSave').onclick=()=>{
   const totalCat=num('fRehab')+num('fFer')+num('fPrr')+num('fReca')+num('fCop')+num('fDom');
   Object.assign(f,{pagador:g('fPag').trim(),fecha:iso,tipo:g('fTipo').trim(),nro:g('fNro').trim(),
     subtotal:totalCat,rehab:num('fRehab'),ferula:num('fFer'),prr:num('fPrr'),reca:num('fReca'),copago:num('fCop'),domic:num('fDom'),
-    anio:+iso.slice(0,4),mes:+iso.slice(5,7),cobradoMonto:num('fCobM'),cobrado:num('fCobM')>0.5,obs:g('fObs').trim()});
+    anio:+iso.slice(0,4),mes:+iso.slice(5,7),cobradoMonto:num('fCobM'),cobrado:num('fCobM')>0.5,cobradoFecha:(num('fCobM')>0.5?(g('fCobF')||new Date().toISOString().slice(0,10)):''),obs:g('fObs').trim()});
   save(); closeModals(); renderRegistro(); renderTablero(); fillPagadores(); fillYearSelect(document.getElementById('tabYear'),false); fillYearSelect(document.getElementById('regYear'),true);
 };
 document.getElementById('fDel').onclick=()=>{
