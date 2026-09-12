@@ -34,12 +34,15 @@ function persist(){localStorage.setItem('claro-data-gisela',JSON.stringify(state
 
 /* ---------- Helpers de fechas y totales ---------- */
 let extraIncome=[]; // ingresos que vienen en vivo de la app de Facturación (no se guardan en Claro)
+let viewMonth=curMonth; // mes que se muestra en el panel
+function monthLabel(m){const p=m.split('-');return new Date(+p[0],+p[1]-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});}
+function monthBalance(){const mm=monthMovements();return sumByType(mm,'income')-sumByType(mm,'expense')-sumByType(mm,'saving');}
 function deriveFactIncome(fact){const out=[];if(!fact)return out;(fact.facturas||[]).forEach(f=>{if(f.cobrado&&Number(f.cobradoMonto)>0)out.push({id:'fact:'+f.id,srcId:'fact:'+f.id,fromFact:true,type:'income',amount:Number(f.cobradoMonto),description:'Cobro '+(f.pagador||'Obra social')+(f.nro?(' · Fact '+f.nro):''),category:'Profesional',payment:'Transferencia',date:f.fecha,tags:['Obra social','Facturación'],professional:false});});(fact.ingresos||[]).forEach(i=>{if(!Number(i.monto))return;out.push({id:'ing:'+i.id,srcId:'ing:'+i.id,fromFact:true,type:'income',amount:Number(i.monto),description:i.concepto||i.categoria||'Ingreso',category:'Profesional',payment:'Transferencia',date:i.fecha,tags:[i.categoria,'Facturación'].filter(Boolean),professional:false});});return out;}
 function allMov(){if(!extraIncome.length)return state.movements;const has={};extraIncome.forEach(m=>has[m.srcId]=1);return state.movements.filter(m=>!(m.srcId&&has[m.srcId])).concat(extraIncome);}
 function ym(dateStr){return dateStr.slice(0,7);}
 function addMonths(ymStr,delta){let [y,m]=ymStr.split('-').map(Number);let d=new Date(y,m-1+delta,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function daysInMonth(ymStr){let [y,m]=ymStr.split('-').map(Number);return new Date(y,m,0).getDate();}
-function monthMovements(m=curMonth){return allMov().filter(mv=>ym(mv.date)===m);}
+function monthMovements(m=viewMonth){return allMov().filter(mv=>ym(mv.date)===m);}
 function sumByType(list,type){return list.filter(m=>m.type===type).reduce((a,m)=>a+m.amount,0);}
 function totals(){let all=allMov(),inc=sumByType(all,'income'),out=sumByType(all,'expense'),save=sumByType(all,'saving');return{inc,out,save,balance:inc-out-save};}
 function icon(type){return type==='income'?'↓':type==='saving'?'◎':'↑';}
@@ -48,12 +51,16 @@ const catColors=['#81b89b','#e9aa85','#b5a6df','#e0c66e','#88b7c6','#e9a8b3'];
 
 function movementRow(m){const sign=m.type==='income'?'+':'−';return `<div class="movement"><span class="movement-icon ${m.type}">${icon(m.type)}</span><div class="movement-info"><strong>${escapeHtml(m.description)}</strong><span>${escapeHtml(m.category)}${m.card?' · '+escapeHtml(m.card):''} · ${new Date(m.date+'T12:00').toLocaleDateString('es-AR',{day:'numeric',month:'short'})}${m.professional?' · Profesional':''}</span></div><span class="movement-amount ${m.type}">${sign}${currency(m.amount)}</span>${m.fromFact?'<span class="from-fact" title="Viene de tu app de Facturación">Facturación</span>':`<button class="edit-movement" data-id="${m.id}">Editar</button>`}</div>`;}
 
-function categoryTotals(m=curMonth){let items={};monthMovements(m).filter(mv=>mv.type==='expense').forEach(mv=>items[mv.category]=(items[mv.category]||0)+mv.amount);return Object.entries(items).sort((a,b)=>b[1]-a[1]);}
+function categoryTotals(m=viewMonth){let items={};monthMovements(m).filter(mv=>mv.type==='expense').forEach(mv=>items[mv.category]=(items[mv.category]||0)+mv.amount);return Object.entries(items).sort((a,b)=>b[1]-a[1]);}
 
 /* ---------- Render principal ---------- */
 function render(){
   const t=totals();
-  $('#balance').textContent=$('#balance').dataset.hidden==='1'?'••••••':currency(t.balance);
+  $('#balance').textContent=$('#balance').dataset.hidden==='1'?'••••••':currency(monthBalance());
+  const esActual=viewMonth===curMonth;
+  const lbl=$('#balanceLabel');if(lbl)lbl.textContent='Balance de '+monthLabel(viewMonth);
+  const mb=$('#monthButton');if(mb)mb.textContent=(esActual?'Este mes':monthLabel(viewMonth));
+  const mn=$('#monthNext');if(mn)mn.disabled=esActual;
   $('#income').textContent=currency(sumByType(monthMovements(),'income'));
   $('#expense').textContent=currency(sumByType(monthMovements(),'expense'));
   $('#savings').textContent=currency(t.save);
@@ -70,8 +77,8 @@ function render(){
 
 /* Comparación con el mes anterior */
 function renderComparison(){
-  const prev=addMonths(curMonth,-1);
-  const curOut=sumByType(monthMovements(curMonth),'expense');
+  const prev=addMonths(viewMonth,-1);
+  const curOut=sumByType(monthMovements(viewMonth),'expense');
   const prevOut=sumByType(monthMovements(prev),'expense');
   const el=$('#balance').parentElement.querySelector('.balance-change');
   if(!el)return;
@@ -236,6 +243,9 @@ $('#addBudget').onclick=()=>openSimple('budget');$('#addGoal').onclick=()=>openS
 $('#addPayment')?.addEventListener('click',()=>openSimple('payment'));
 $('#addFixed')?.addEventListener('click',()=>openSimple('fixed'));
 $$('.type-tab').forEach(b=>b.onclick=()=>setType(b.dataset.type));
+$('#monthPrev')&&($('#monthPrev').onclick=()=>{viewMonth=addMonths(viewMonth,-1);render();});
+$('#monthNext')&&($('#monthNext').onclick=()=>{if(viewMonth<curMonth){viewMonth=addMonths(viewMonth,1);render();}});
+$('#monthButton')&&($('#monthButton').onclick=()=>{viewMonth=curMonth;render();});
 $('#searchInput').oninput=renderMovements;$('#typeFilter').onchange=renderMovements;
 
 /* Delegación de clics para botones dinámicos */
@@ -257,7 +267,7 @@ document.addEventListener('click',e=>{
 function showToast(message){const t=$('#toast');t.textContent=message;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400);}
 $('#themeToggle').onclick=()=>{document.body.classList.toggle('dark');localStorage.setItem('claro-dark',document.body.classList.contains('dark'));$('#themeToggle').innerHTML=document.body.classList.contains('dark')?'☀ <span>Modo claro</span>':'☾ <span>Modo oscuro</span>';};
 if(localStorage.getItem('claro-dark')==='true')$('#themeToggle').click();
-$('#visibility').onclick=()=>{let hidden=$('#balance').dataset.hidden==='1';$('#balance').dataset.hidden=hidden?'':'1';$('#balance').textContent=hidden?currency(totals().balance):'••••••';};
+$('#visibility').onclick=()=>{let hidden=$('#balance').dataset.hidden==='1';$('#balance').dataset.hidden=hidden?'':'1';$('#balance').textContent=hidden?currency(monthBalance()):'••••••';};
 
 /* ---------- Exportar / respaldo ---------- */
 function download(content,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href);}
