@@ -39,7 +39,7 @@ let extraIncome=[]; // ingresos que vienen en vivo de la app de Facturación (no
 let viewMonth=curMonth; // mes que se muestra en el panel
 function monthLabel(m){const p=m.split('-');return new Date(+p[0],+p[1]-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});}
 function monthBalance(){const mm=monthMovements();return sumByType(mm,'income')-sumByType(mm,'expense')-sumByType(mm,'saving');}
-function bankBalance(){const base=Number(state.saldoInicial)||0;const from=state.saldoFecha||today;return base+allMov().filter(m=>m.date>=from).reduce((a,m)=>a+(m.type==='income'?m.amount:m.type==='expense'?-m.amount:0),0);}
+function bankBalance(){const base=Number(state.saldoInicial)||0;const from=state.saldoFecha||today;return base+allMov().filter(m=>m.date>=from).reduce((a,m)=>a+(m.type==='income'?m.amount:-m.amount),0);}
 function deriveFactIncome(fact){const out=[];if(!fact)return out;(fact.facturas||[]).forEach(f=>{if(f.cobrado&&Number(f.cobradoMonto)>0)out.push({id:'fact:'+f.id,srcId:'fact:'+f.id,fromFact:true,type:'income',amount:Number(f.cobradoMonto),description:'Cobro '+(f.pagador||'Obra social')+(f.nro?(' · Fact '+f.nro):''),category:'Profesional',payment:'Transferencia',date:f.cobradoFecha||f.fecha,tags:['Obra social','Facturación'],professional:false});});(fact.ingresos||[]).forEach(i=>{if(!Number(i.monto))return;out.push({id:'ing:'+i.id,srcId:'ing:'+i.id,fromFact:true,type:'income',amount:Number(i.monto),description:i.concepto||i.categoria||'Ingreso',category:'Profesional',payment:'Transferencia',date:i.fecha,tags:[i.categoria,'Facturación'].filter(Boolean),professional:false});});return out;}
 function allMov(){if(!extraIncome.length)return state.movements;const has={};extraIncome.forEach(m=>has[m.srcId]=1);return state.movements.filter(m=>!(m.srcId&&has[m.srcId])).concat(extraIncome);}
 function ym(dateStr){return dateStr.slice(0,7);}
@@ -67,7 +67,7 @@ function render(){
   const mn=$('#monthNext');if(mn)mn.disabled=esActual;
   $('#income').textContent=currency(sumByType(monthMovements(),'income'));
   $('#expense').textContent=currency(sumByType(monthMovements(),'expense'));
-  $('#savings').textContent=currency(t.save);
+  $('#savings').textContent=currency(state.goals.reduce((a,g)=>a+(Number(g.saved)||0),0));
   if(bankMode){const mm=monthMovements();const el=$('#balance').parentElement.querySelector('.balance-change');if(el)el.innerHTML=`En ${monthLabel(viewMonth)}: entró ${currency(sumByType(mm,'income'))} · gastaste ${currency(sumByType(mm,'expense'))}`;}
   else renderComparison();
 
@@ -187,7 +187,7 @@ function openSimple(kind,ref=''){
     f.innerHTML=`<label>Categoría<input value="${escapeHtml(b.category)}" disabled></label>`+fieldNumber('simpleAmount','',b.limit);
   }else if(kind==='goal'){
     $('#simpleEyebrow').textContent='OBJETIVO DE AHORRO';$('#simpleTitle').textContent='Nuevo objetivo';
-    f.innerHTML='<label>Nombre<input id="simpleName" placeholder="Ej. Viaje en familia" required></label>'+fieldNumber('simpleAmount','Monto objetivo')+'<label>Ícono<input id="simpleIcon" value="✦" maxlength="2"></label>';
+    f.innerHTML='<label>Nombre<input id="simpleName" placeholder="Ej. Viaje en familia" required></label>'+fieldNumber('simpleAmount','Monto objetivo')+'<label>¿Cuánto ya tenés ahorrado? <span style="font-weight:400">(opcional, no toca el banco)</span><input id="simpleSaved" type="number" min="0" placeholder="0"></label>'+'<label>Ícono<input id="simpleIcon" value="✦" maxlength="2"></label>';
   }else if(kind==='category'){
     $('#simpleEyebrow').textContent='ORGANIZACIÓN';$('#simpleTitle').textContent='Nueva categoría';
     f.innerHTML='<label>Nombre de categoría<input id="simpleName" placeholder="Ej. Mascotas" required></label>';
@@ -233,7 +233,7 @@ function deletePayment(name){if(state.payments.length<=1){showToast('Dejá al me
 $('#simpleForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();const kind=e.currentTarget.dataset.kind,ref=e.currentTarget.dataset.ref;
   if(kind==='budget'){const cat=$('#simpleCategory').value,limit=Number($('#simpleAmount').value);const i=state.budgets.findIndex(b=>b.category===cat);if(i>=0)state.budgets[i].limit=limit;else state.budgets.push({category:cat,limit});}
   else if(kind==='editBudget'){state.budgets[Number(ref)].limit=Number($('#simpleAmount').value);}
-  else if(kind==='goal'){state.goals.push({id:Date.now(),name:$('#simpleName').value,target:Number($('#simpleAmount').value),saved:0,icon:$('#simpleIcon').value||'✦'});}
+  else if(kind==='goal'){state.goals.push({id:Date.now(),name:$('#simpleName').value,target:Number($('#simpleAmount').value),saved:Number($('#simpleSaved').value)||0,icon:$('#simpleIcon').value||'✦'});}
   else if(kind==='category'){let n=$('#simpleName').value.trim();if(n&&!state.categories.includes(n))state.categories.push(n);}
   else if(kind==='editCategory'){renameCategory(ref,$('#simpleName').value.trim());}
   else if(kind==='payment'){let n=$('#simpleName').value.trim();if(n&&!state.payments.includes(n))state.payments.push(n);}
