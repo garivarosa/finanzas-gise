@@ -26,6 +26,8 @@ state.movements=state.movements||[];
 state.budgets=state.budgets||[];
 state.goals=state.goals||[];
 state.fixed=state.fixed||[];
+if(typeof state.saldoInicial==='undefined')state.saldoInicial=null; // dinero en el banco al arrancar
+state.saldoFecha=state.saldoFecha||today;
 
 let currentType='expense';
 let editingId=null;
@@ -37,6 +39,7 @@ let extraIncome=[]; // ingresos que vienen en vivo de la app de Facturación (no
 let viewMonth=curMonth; // mes que se muestra en el panel
 function monthLabel(m){const p=m.split('-');return new Date(+p[0],+p[1]-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});}
 function monthBalance(){const mm=monthMovements();return sumByType(mm,'income')-sumByType(mm,'expense')-sumByType(mm,'saving');}
+function bankBalance(){const base=Number(state.saldoInicial)||0;const from=state.saldoFecha||today;return base+allMov().filter(m=>m.date>=from).reduce((a,m)=>a+(m.type==='income'?m.amount:m.type==='expense'?-m.amount:0),0);}
 function deriveFactIncome(fact){const out=[];if(!fact)return out;(fact.facturas||[]).forEach(f=>{if(f.cobrado&&Number(f.cobradoMonto)>0)out.push({id:'fact:'+f.id,srcId:'fact:'+f.id,fromFact:true,type:'income',amount:Number(f.cobradoMonto),description:'Cobro '+(f.pagador||'Obra social')+(f.nro?(' · Fact '+f.nro):''),category:'Profesional',payment:'Transferencia',date:f.cobradoFecha||f.fecha,tags:['Obra social','Facturación'],professional:false});});(fact.ingresos||[]).forEach(i=>{if(!Number(i.monto))return;out.push({id:'ing:'+i.id,srcId:'ing:'+i.id,fromFact:true,type:'income',amount:Number(i.monto),description:i.concepto||i.categoria||'Ingreso',category:'Profesional',payment:'Transferencia',date:i.fecha,tags:[i.categoria,'Facturación'].filter(Boolean),professional:false});});return out;}
 function allMov(){if(!extraIncome.length)return state.movements;const has={};extraIncome.forEach(m=>has[m.srcId]=1);return state.movements.filter(m=>!(m.srcId&&has[m.srcId])).concat(extraIncome);}
 function ym(dateStr){return dateStr.slice(0,7);}
@@ -56,15 +59,17 @@ function categoryTotals(m=viewMonth){let items={};monthMovements(m).filter(mv=>m
 /* ---------- Render principal ---------- */
 function render(){
   const t=totals();
-  $('#balance').textContent=$('#balance').dataset.hidden==='1'?'••••••':currency(monthBalance());
+  const bankMode=state.saldoInicial!=null;
+  $('#balance').textContent=$('#balance').dataset.hidden==='1'?'••••••':currency(bankMode?bankBalance():monthBalance());
   const esActual=viewMonth===curMonth;
-  const lbl=$('#balanceLabel');if(lbl)lbl.textContent='Balance de '+monthLabel(viewMonth);
+  const lbl=$('#balanceLabel');if(lbl)lbl.textContent=bankMode?'💵 En el banco':('Balance de '+monthLabel(viewMonth));
   const mb=$('#monthButton');if(mb)mb.textContent=(esActual?'Este mes':monthLabel(viewMonth));
   const mn=$('#monthNext');if(mn)mn.disabled=esActual;
   $('#income').textContent=currency(sumByType(monthMovements(),'income'));
   $('#expense').textContent=currency(sumByType(monthMovements(),'expense'));
   $('#savings').textContent=currency(t.save);
-  renderComparison();
+  if(bankMode){const mm=monthMovements();const el=$('#balance').parentElement.querySelector('.balance-change');if(el)el.innerHTML=`En ${monthLabel(viewMonth)}: entró ${currency(sumByType(mm,'income'))} · gastaste ${currency(sumByType(mm,'expense'))}`;}
+  else renderComparison();
 
   const recent=[...allMov()].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
   $('#recentMovements').innerHTML=recent.map(movementRow).join('')||'<p class="muted">Todavía no hay movimientos.</p>';
@@ -159,6 +164,7 @@ function renderReports(){
 function renderSettingsTags(){
   $('#categoryTags').innerHTML=state.categories.map(c=>`<button class="tag js-cat" data-name="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('');
   const pt=$('#paymentTags');if(pt)pt.innerHTML=state.payments.map(p=>`<button class="tag js-pay" data-name="${escapeHtml(p)}">${escapeHtml(p)}</button>`).join('');
+  const bi=$('#bankInfo');if(bi)bi.textContent=state.saldoInicial!=null?('Saldo cargado: '+currency(state.saldoInicial)+' (al '+new Date(state.saldoFecha+'T12:00').toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'})+'). Ahora en el banco: '+currency(bankBalance())):'Todavía no cargaste tu saldo. Tocá el botón para empezar.';
 }
 
 /* ---------- Formulario de movimiento ---------- */
@@ -206,6 +212,11 @@ function openSimple(kind,ref=''){
       +`<label class="check-label"><input id="simplePro" type="checkbox" ${f0&&f0.professional?'checked':''}> Es un gasto profesional</label>`;
     $('#simpleCategory').innerHTML=state.categories.map(c=>`<option ${f0&&f0.category===c?'selected':''}>${escapeHtml(c)}</option>`).join('');
     $('#simplePayment').innerHTML=state.payments.map(p=>`<option ${f0&&f0.payment===p?'selected':''}>${escapeHtml(p)}</option>`).join('');
+  }else if(kind==='bank'){
+    $('#simpleEyebrow').textContent='DINERO EN EL BANCO';$('#simpleTitle').textContent='¿Cuánto tenés hoy?';
+    f.innerHTML=fieldNumber('simpleAmount','Lo que tenés hoy',state.saldoInicial!=null?state.saldoInicial:'')
+      +`<label>A esta fecha<input id="simpleDate" type="date" value="${state.saldoFecha||today}"></label>`
+      +`<p class="small" style="color:var(--muted);margin-top:10px">Poné lo que tenés hoy en el banco/efectivo. De acá en más, cada ingreso y gasto que cargues actualiza este número solo.</p>`;
   }else{ // aporte a objetivo (kind = id numérico)
     const goal=state.goals.find(g=>g.id===+kind);$('#simpleEyebrow').textContent='APORTE A '+(goal?goal.name.toUpperCase():'');$('#simpleTitle').textContent='Registrar aporte';
     f.innerHTML=fieldNumber('simpleAmount','¿Cuánto sumás?');
@@ -228,6 +239,7 @@ $('#simpleForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')
   else if(kind==='payment'){let n=$('#simpleName').value.trim();if(n&&!state.payments.includes(n))state.payments.push(n);}
   else if(kind==='editPayment'){renamePayment(ref,$('#simpleName').value.trim());}
   else if(kind==='fixed'||kind==='editFixed'){const data={name:$('#simpleName').value.trim(),amount:Number($('#simpleAmount').value),category:$('#simpleCategory').value,dueDay:Math.min(31,Math.max(1,Number($('#simpleDay').value)||1)),payment:$('#simplePayment').value,professional:$('#simplePro').checked};if(kind==='editFixed'){const fx=state.fixed.find(x=>x.id===Number(ref));Object.assign(fx,data);}else{state.fixed.push({id:Date.now(),lastPaid:null,tags:[],...data});}}
+  else if(kind==='bank'){state.saldoInicial=Number($('#simpleAmount').value)||0;state.saldoFecha=$('#simpleDate').value||today;}
   else{let g=state.goals.find(g=>g.id===+kind),amount=Number($('#simpleAmount').value);if(g){g.saved+=amount;state.movements.push({id:Date.now(),type:'saving',amount,description:g.name,category:'Ahorro',payment:state.payments[0],date:today,tags:[],professional:false});}}
   $('#simpleDialog').close();persist();showToast('Guardado correctamente');
 });
@@ -241,6 +253,7 @@ $$('[data-view]').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 $('#openQuickAdd').onclick=openMovement;$('#openQuickAdd2').onclick=openMovement;$('#mobileAdd').onclick=openMovement;
 $('#addBudget').onclick=()=>openSimple('budget');$('#addGoal').onclick=()=>openSimple('goal');$('#addCategory').onclick=()=>openSimple('category');
 $('#addPayment')?.addEventListener('click',()=>openSimple('payment'));
+$('#setBank')?.addEventListener('click',()=>openSimple('bank'));
 $('#addFixed')?.addEventListener('click',()=>openSimple('fixed'));
 $$('.type-tab').forEach(b=>b.onclick=()=>setType(b.dataset.type));
 $('#monthPrev')&&($('#monthPrev').onclick=()=>{viewMonth=addMonths(viewMonth,-1);render();});
@@ -267,7 +280,7 @@ document.addEventListener('click',e=>{
 function showToast(message){const t=$('#toast');t.textContent=message;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400);}
 $('#themeToggle').onclick=()=>{document.body.classList.toggle('dark');localStorage.setItem('claro-dark',document.body.classList.contains('dark'));$('#themeToggle').innerHTML=document.body.classList.contains('dark')?'☀ <span>Modo claro</span>':'☾ <span>Modo oscuro</span>';};
 if(localStorage.getItem('claro-dark')==='true')$('#themeToggle').click();
-$('#visibility').onclick=()=>{let hidden=$('#balance').dataset.hidden==='1';$('#balance').dataset.hidden=hidden?'':'1';$('#balance').textContent=hidden?currency(monthBalance()):'••••••';};
+$('#visibility').onclick=()=>{let hidden=$('#balance').dataset.hidden==='1';$('#balance').dataset.hidden=hidden?'':'1';$('#balance').textContent=hidden?currency(state.saldoInicial!=null?bankBalance():monthBalance()):'••••••';};
 
 /* ---------- Exportar / respaldo ---------- */
 function download(content,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href);}
@@ -297,7 +310,7 @@ $('#importFact')?.addEventListener('change',e=>{const file=e.target.files[0];if(
 /* ---------- Sincronización con Supabase (nube) ---------- */
 const SB_CFG=window.CLARO_SUPABASE;
 let sb=null,cloudReady=false,applyingRemote=false,pushTimer=null;
-function normalizeState(){state.categories=state.categories||seed.categories.slice();state.payments=state.payments&&state.payments.length?state.payments:seed.payments.slice();state.cards=state.cards||seed.cards.slice();state.movements=state.movements||[];state.budgets=state.budgets||[];state.goals=state.goals||[];state.fixed=state.fixed||[];}
+function normalizeState(){state.categories=state.categories||seed.categories.slice();state.payments=state.payments&&state.payments.length?state.payments:seed.payments.slice();state.cards=state.cards||seed.cards.slice();state.movements=state.movements||[];state.budgets=state.budgets||[];state.goals=state.goals||[];state.fixed=state.fixed||[];if(typeof state.saldoInicial==='undefined')state.saldoInicial=null;state.saldoFecha=state.saldoFecha||today;}
 function showAuth(){const o=$('#authOverlay');if(o)o.hidden=false;}
 function hideAuth(){const o=$('#authOverlay');if(o)o.hidden=true;}
 function updateSyncUI(ok,msg,email){const s=$('#syncStatus');if(s)s.innerHTML=ok?'<i></i> Sincronizado en la nube ✓':'<i class="off"></i> '+(msg||'Guardado solo en esta compu');const u=$('#syncUser');if(u)u.textContent=ok&&email?('Conectada como '+email):(ok?'':'Entrá para sincronizar entre tus dispositivos.');const lo=$('#logoutBtn');if(lo)lo.hidden=!ok;const li=$('#loginBtn');if(li)li.hidden=ok;}
