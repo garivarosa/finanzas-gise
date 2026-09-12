@@ -254,6 +254,7 @@ $('#openQuickAdd').onclick=openMovement;$('#openQuickAdd2').onclick=openMovement
 $('#addBudget').onclick=()=>openSimple('budget');$('#addGoal').onclick=()=>openSimple('goal');$('#addCategory').onclick=()=>openSimple('category');
 $('#addPayment')?.addEventListener('click',()=>openSimple('payment'));
 $('#setBank')?.addEventListener('click',()=>openSimple('bank'));
+$('#addBulkCats')?.addEventListener('click',()=>{const txt=$('#bulkCats').value||'';const names=txt.split(/\n/).map(l=>l.split(/\t|\s{2,}/)[0].trim()).filter(n=>n&&!/^(extras?|fijo|variable)$/i.test(n));let added=0;names.forEach(n=>{if(!state.categories.includes(n)){state.categories.push(n);added++;}});$('#bulkCats').value='';if(added){persist();showToast('Agregué '+added+' categoría'+(added===1?'':'s'));}else showToast('No había categorías nuevas para agregar');});
 $('#addFixed')?.addEventListener('click',()=>openSimple('fixed'));
 $$('.type-tab').forEach(b=>b.onclick=()=>setType(b.dataset.type));
 $('#monthPrev')&&($('#monthPrev').onclick=()=>{viewMonth=addMonths(viewMonth,-1);render();});
