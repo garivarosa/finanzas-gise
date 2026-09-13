@@ -29,6 +29,7 @@ state.goals=state.goals||[];
 state.fixed=state.fixed||[];
 if(typeof state.saldoInicial==='undefined')state.saldoInicial=null; // dinero en el banco al arrancar
 state.saldoFecha=state.saldoFecha||today;
+state.catFijo=state.catFijo||{}; // categorías marcadas como gasto fijo
 
 let currentType='expense';
 let editingId=null;
@@ -154,7 +155,7 @@ function payFixed(id){
 function renderReports(){
   const cats=categoryTotals();
   $('#professionalTotal').textContent=currency(monthMovements().filter(m=>m.type==='expense'&&m.professional).reduce((a,m)=>a+m.amount,0));
-  $('#childTotal').textContent=currency(monthMovements().filter(m=>m.type==='expense'&&(m.tags||[]).map(x=>x.toLowerCase()).includes('hijo')).reduce((a,m)=>a+m.amount,0));
+  const gmes=monthMovements().filter(m=>m.type==='expense');const gFijos=gmes.filter(m=>state.catFijo[m.category]).reduce((a,m)=>a+m.amount,0);const gVar=gmes.filter(m=>!state.catFijo[m.category]).reduce((a,m)=>a+m.amount,0);const gTot=(gFijos+gVar)||1;const fv=$('#fixVarChart');if(fv)fv.innerHTML=(gFijos+gVar)?`<div class="fv-row"><span>🔁 Fijos</span><b>${currency(gFijos)}</b><span class="fv-pct">${Math.round(gFijos/gTot*100)}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${gFijos/gTot*100}%;background:#88b7c6"></div></div><div class="fv-row" style="margin-top:12px"><span>🛒 Variables</span><b>${currency(gVar)}</b><span class="fv-pct">${Math.round(gVar/gTot*100)}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${gVar/gTot*100}%;background:#e9aa85"></div></div>`:'<p class="muted">Todavía no hay gastos este mes.</p>';
   $('#reportCategories').innerHTML=cats.slice(0,5).map(([n,v],i)=>`<div class="category-row"><i class="category-dot" style="background:${catColors[i%catColors.length]}"></i><div class="category-name"><b>${escapeHtml(n)}</b><span>${currency(v)}</span></div></div>`).join('')||'<p class="muted">Aún no hay gastos.</p>';
 
   // Barras reales: últimos 6 meses
@@ -167,7 +168,7 @@ function renderReports(){
 
 /* ---------- Configuración: categorías y medios de pago ---------- */
 function renderSettingsTags(){
-  $('#categoryTags').innerHTML=state.categories.map(c=>`<button class="tag js-cat" data-name="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('');
+  $('#categoryTags').innerHTML=state.categories.map(c=>`<button class="tag js-cat${state.catFijo[c]?' fijo':''}" data-name="${escapeHtml(c)}" title="${state.catFijo[c]?'Gasto fijo':'Gasto variable'}">${escapeHtml(c)}${state.catFijo[c]?' <span class="fx-dot">F</span>':''}</button>`).join('');
   const pt=$('#paymentTags');if(pt)pt.innerHTML=state.payments.map(p=>`<button class="tag js-pay" data-name="${escapeHtml(p)}">${escapeHtml(p)}</button>`).join('');
   const bi=$('#bankInfo');if(bi)bi.textContent=state.saldoInicial!=null?('Saldo cargado: '+currency(state.saldoInicial)+' (al '+new Date(state.saldoFecha+'T12:00').toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'})+'). Ahora en el banco: '+currency(bankBalance())):'Todavía no cargaste tu saldo. Tocá el botón para empezar.';
 }
@@ -175,9 +176,9 @@ function renderSettingsTags(){
 /* ---------- Formulario de movimiento ---------- */
 function populatePayments(){const sel=$('#movementPayment');const prev=sel.value;sel.innerHTML=state.payments.map(p=>`<option>${escapeHtml(p)}</option>`).join('');if(prev&&state.payments.includes(prev))sel.value=prev;}
 function setType(type){currentType=type;$$('.type-tab').forEach(b=>b.classList.toggle('active',b.dataset.type===type));let cats=type==='saving'?['Ahorro',...state.categories]:state.categories;$('#movementCategory').innerHTML=cats.map(c=>`<option>${escapeHtml(c)}</option>`).join('');}
-function openMovement(m=null){if(!m||!m.id)m=null;editingId=m?.id??null;$('#movementForm').reset();populatePayments();if(m){setType(m.type);$('#movementAmount').value=m.amount;$('#movementDescription').value=m.description;$('#movementCategory').value=m.category;$('#movementPayment').value=m.payment;$('#movementDate').value=m.date;$('#movementCard').value=m.card||'';$('#movementTags').value=(m.tags||[]).join(', ');$('#movementProfessional').checked=m.professional;}else{setType('expense');$('#movementDate').value=today;}$('#movementDialog').showModal();setTimeout(()=>$('#movementAmount').focus(),50);}
+function openMovement(m=null){if(!m||!m.id)m=null;editingId=m?.id??null;$('#movementForm').reset();populatePayments();if(m){setType(m.type);$('#movementAmount').value=m.amount;$('#movementDescription').value=m.description;$('#movementCategory').value=m.category;$('#movementPayment').value=m.payment;$('#movementDate').value=m.date;$('#movementCard').value=m.card||'';$('#movementProfessional').checked=m.professional;}else{setType('expense');$('#movementDate').value=today;}$('#movementDialog').showModal();setTimeout(()=>$('#movementAmount').focus(),50);}
 
-$('#movementForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();const amount=Number($('#movementAmount').value);if(!amount)return;const data={id:editingId||Date.now(),type:currentType,amount,description:$('#movementDescription').value,category:$('#movementCategory').value,payment:$('#movementPayment').value,card:$('#movementCard').value,date:$('#movementDate').value||today,tags:$('#movementTags').value.split(',').map(s=>s.trim()).filter(Boolean),professional:$('#movementProfessional').checked};const index=state.movements.findIndex(m=>m.id===editingId);if(index>=0)state.movements[index]=data;else state.movements.push(data);$('#movementDialog').close();persist();showToast(index>=0?'Movimiento actualizado':'Movimiento guardado');});
+$('#movementForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();const amount=Number($('#movementAmount').value);if(!amount)return;const data={id:editingId||Date.now(),type:currentType,amount,description:$('#movementDescription').value,category:$('#movementCategory').value,payment:$('#movementPayment').value,card:$('#movementCard').value,date:$('#movementDate').value||today,tags:(editingId?(state.movements.find(m=>m.id===editingId)||{}).tags||[]:[]),professional:$('#movementProfessional').checked};const index=state.movements.findIndex(m=>m.id===editingId);if(index>=0)state.movements[index]=data;else state.movements.push(data);$('#movementDialog').close();persist();showToast(index>=0?'Movimiento actualizado':'Movimiento guardado');});
 
 /* ---------- Diálogo simple (alta/edición de todo lo demás) ---------- */
 function fieldNumber(id,ph,val=''){return `<label>Importe<input id="${id}" type="number" min="0" step="any" inputmode="decimal" placeholder="${ph}" value="${val}" required></label>`;}
@@ -203,10 +204,10 @@ function openSimple(kind,ref=''){
     if(g0)$('#simpleCur').value=g0.currency||'ARS';
   }else if(kind==='category'){
     $('#simpleEyebrow').textContent='ORGANIZACIÓN';$('#simpleTitle').textContent='Nueva categoría';
-    f.innerHTML='<label>Nombre de categoría<input id="simpleName" placeholder="Ej. Mascotas" required></label>';
+    f.innerHTML='<label>Nombre de categoría<input id="simpleName" placeholder="Ej. Mascotas" required></label><label class="check-label"><input id="simpleCatFijo" type="checkbox"> Es un gasto fijo (servicios, seguros, tarjeta…)</label>';
   }else if(kind==='editCategory'){
     $('#simpleEyebrow').textContent='CATEGORÍA';$('#simpleTitle').textContent='Editar categoría';
-    f.innerHTML=`<label>Nombre<input id="simpleName" value="${escapeHtml(ref)}" required></label>`;
+    f.innerHTML=`<label>Nombre<input id="simpleName" value="${escapeHtml(ref)}" required></label><label class="check-label"><input id="simpleCatFijo" type="checkbox" ${state.catFijo[ref]?'checked':''}> Es un gasto fijo</label>`;
     delBtn='<button type="button" class="delete-button js-delete">Borrar categoría</button>';
   }else if(kind==='payment'){
     $('#simpleEyebrow').textContent='MEDIOS DE PAGO';$('#simpleTitle').textContent='Nuevo medio de pago';
@@ -239,8 +240,8 @@ function openSimple(kind,ref=''){
   $('#simpleDialog').showModal();setTimeout(()=>f.querySelector('input,select')?.focus(),50);
 }
 
-function renameCategory(oldName,newName){if(!newName||oldName===newName)return;if(!state.categories.includes(newName))state.categories[state.categories.indexOf(oldName)]=newName;else state.categories=state.categories.filter(c=>c!==oldName);state.movements.forEach(m=>{if(m.category===oldName)m.category=newName;});state.budgets.forEach(b=>{if(b.category===oldName)b.category=newName;});state.fixed.forEach(fx=>{if(fx.category===oldName)fx.category=newName;});}
-function deleteCategory(name){if(!state.categories.includes('Otros'))state.categories.push('Otros');state.categories=state.categories.filter(c=>c!==name);state.movements.forEach(m=>{if(m.category===name)m.category='Otros';});state.budgets=state.budgets.filter(b=>b.category!==name);state.fixed.forEach(fx=>{if(fx.category===name)fx.category='Otros';});}
+function renameCategory(oldName,newName){if(!newName||oldName===newName)return;if(state.catFijo[oldName]){state.catFijo[newName]=true;delete state.catFijo[oldName];}if(!state.categories.includes(newName))state.categories[state.categories.indexOf(oldName)]=newName;else state.categories=state.categories.filter(c=>c!==oldName);state.movements.forEach(m=>{if(m.category===oldName)m.category=newName;});state.budgets.forEach(b=>{if(b.category===oldName)b.category=newName;});state.fixed.forEach(fx=>{if(fx.category===oldName)fx.category=newName;});}
+function deleteCategory(name){if(!state.categories.includes('Otros'))state.categories.push('Otros');delete state.catFijo[name];state.categories=state.categories.filter(c=>c!==name);state.movements.forEach(m=>{if(m.category===name)m.category='Otros';});state.budgets=state.budgets.filter(b=>b.category!==name);state.fixed.forEach(fx=>{if(fx.category===name)fx.category='Otros';});}
 function renamePayment(oldName,newName){if(!newName||oldName===newName)return;if(!state.payments.includes(newName))state.payments[state.payments.indexOf(oldName)]=newName;else state.payments=state.payments.filter(p=>p!==oldName);state.movements.forEach(m=>{if(m.payment===oldName)m.payment=newName;});state.fixed.forEach(fx=>{if(fx.payment===oldName)fx.payment=newName;});}
 function deletePayment(name){if(state.payments.length<=1){showToast('Dejá al menos un medio de pago');return false;}const fallback=state.payments.find(p=>p!==name);state.payments=state.payments.filter(p=>p!==name);state.movements.forEach(m=>{if(m.payment===name)m.payment=fallback;});state.fixed.forEach(fx=>{if(fx.payment===name)fx.payment=fallback;});return true;}
 
@@ -249,8 +250,8 @@ $('#simpleForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')
   else if(kind==='editBudget'){state.budgets[Number(ref)].limit=Number($('#simpleAmount').value);}
   else if(kind==='goal'){const ng={id:Date.now(),name:$('#simpleName').value,target:Number($('#simpleAmount').value),saved:Number($('#simpleSaved').value)||0,invested:($('#simpleInvested').value!==''?Number($('#simpleInvested').value):undefined),icon:$('#simpleIcon').value||'✦',currency:$('#simpleCur').value,place:$('#simplePlace').value.trim()};state.goals.push(ng);pushHistory(ng,'inicial',($('#simpleGoalDate')&&$('#simpleGoalDate').value)||today);}
   else if(kind==='editGoal'){const g=state.goals.find(x=>x.id===Number(ref));if(g){g.name=$('#simpleName').value;g.target=Number($('#simpleAmount').value);g.saved=Number($('#simpleSaved').value)||0;g.invested=($('#simpleInvested').value!==''?Number($('#simpleInvested').value):undefined);g.icon=$('#simpleIcon').value||'✦';g.currency=$('#simpleCur').value;g.place=$('#simplePlace').value.trim();pushHistory(g,'ajuste',($('#simpleGoalDate')&&$('#simpleGoalDate').value)||today);}}
-  else if(kind==='category'){let n=$('#simpleName').value.trim();if(n&&!state.categories.includes(n))state.categories.push(n);}
-  else if(kind==='editCategory'){renameCategory(ref,$('#simpleName').value.trim());}
+  else if(kind==='category'){let n=$('#simpleName').value.trim();if(n){if(!state.categories.includes(n))state.categories.push(n);if($('#simpleCatFijo')&&$('#simpleCatFijo').checked)state.catFijo[n]=true;else delete state.catFijo[n];}}
+  else if(kind==='editCategory'){const nn=$('#simpleName').value.trim();renameCategory(ref,nn);const fin=nn||ref;if($('#simpleCatFijo')&&$('#simpleCatFijo').checked)state.catFijo[fin]=true;else delete state.catFijo[fin];}
   else if(kind==='payment'){let n=$('#simpleName').value.trim();if(n&&!state.payments.includes(n))state.payments.push(n);}
   else if(kind==='editPayment'){renamePayment(ref,$('#simpleName').value.trim());}
   else if(kind==='fixed'||kind==='editFixed'){const data={name:$('#simpleName').value.trim(),amount:Number($('#simpleAmount').value),category:$('#simpleCategory').value,dueDay:Math.min(31,Math.max(1,Number($('#simpleDay').value)||1)),payment:$('#simplePayment').value,professional:$('#simplePro').checked};if(kind==='editFixed'){const fx=state.fixed.find(x=>x.id===Number(ref));Object.assign(fx,data);}else{state.fixed.push({id:Date.now(),lastPaid:null,tags:[],...data});}}
@@ -269,7 +270,7 @@ $('#openQuickAdd').onclick=openMovement;$('#openQuickAdd2').onclick=openMovement
 $('#addBudget').onclick=()=>openSimple('budget');$('#addGoal').onclick=()=>openSimple('goal');$('#addCategory').onclick=()=>openSimple('category');
 $('#addPayment')?.addEventListener('click',()=>openSimple('payment'));
 $('#setBank')?.addEventListener('click',()=>openSimple('bank'));
-$('#addBulkCats')?.addEventListener('click',()=>{const txt=$('#bulkCats').value||'';const names=txt.split(/\n/).map(l=>l.split(/\t|\s{2,}/)[0].trim()).filter(n=>n&&!/^(extras?|fijo|variable)$/i.test(n));let added=0;names.forEach(n=>{if(!state.categories.includes(n)){state.categories.push(n);added++;}});$('#bulkCats').value='';if(added){persist();showToast('Agregué '+added+' categoría'+(added===1?'':'s'));}else showToast('No había categorías nuevas para agregar');});
+$('#addBulkCats')?.addEventListener('click',()=>{const txt=$('#bulkCats').value||'';let added=0,marcadas=0;txt.split(/\n/).forEach(l=>{const parts=l.split(/\t|\s{2,}/);const n=(parts[0]||'').trim();const lbl=(parts[1]||'').trim().toLowerCase();if(!n||/^(extras?|fijo|variable)$/i.test(n))return;if(!state.categories.includes(n)){state.categories.push(n);added++;}if(/fij/.test(lbl)){if(!state.catFijo[n]){state.catFijo[n]=true;marcadas++;}}else if(/var/.test(lbl)){delete state.catFijo[n];}});$('#bulkCats').value='';if(added||marcadas){persist();showToast('Agregué '+added+' categoría'+(added===1?'':'s')+(marcadas?' · '+marcadas+' fijas':''));}else showToast('No había nada nuevo para agregar');});
 $('#addFixed')?.addEventListener('click',()=>openSimple('fixed'));
 $$('.type-tab').forEach(b=>b.onclick=()=>setType(b.dataset.type));
 $('#monthPrev')&&($('#monthPrev').onclick=()=>{viewMonth=addMonths(viewMonth,-1);render();});
@@ -327,7 +328,7 @@ $('#importFact')?.addEventListener('change',e=>{const file=e.target.files[0];if(
 /* ---------- Sincronización con Supabase (nube) ---------- */
 const SB_CFG=window.CLARO_SUPABASE;
 let sb=null,cloudReady=false,applyingRemote=false,pushTimer=null;
-function normalizeState(){state.categories=state.categories||seed.categories.slice();state.payments=state.payments&&state.payments.length?state.payments:seed.payments.slice();state.cards=state.cards||seed.cards.slice();state.movements=state.movements||[];state.budgets=state.budgets||[];state.goals=state.goals||[];state.fixed=state.fixed||[];if(typeof state.saldoInicial==='undefined')state.saldoInicial=null;state.saldoFecha=state.saldoFecha||today;}
+function normalizeState(){state.categories=state.categories||seed.categories.slice();state.payments=state.payments&&state.payments.length?state.payments:seed.payments.slice();state.cards=state.cards||seed.cards.slice();state.movements=state.movements||[];state.budgets=state.budgets||[];state.goals=state.goals||[];state.fixed=state.fixed||[];if(typeof state.saldoInicial==='undefined')state.saldoInicial=null;state.saldoFecha=state.saldoFecha||today;state.catFijo=state.catFijo||{};}
 function showAuth(){const o=$('#authOverlay');if(o)o.hidden=false;}
 function hideAuth(){const o=$('#authOverlay');if(o)o.hidden=true;}
 function updateSyncUI(ok,msg,email){const s=$('#syncStatus');if(s)s.innerHTML=ok?'<i></i> Sincronizado en la nube ✓':'<i class="off"></i> '+(msg||'Guardado solo en esta compu');const u=$('#syncUser');if(u)u.textContent=ok&&email?('Conectada como '+email):(ok?'':'Entrá para sincronizar entre tus dispositivos.');const lo=$('#logoutBtn');if(lo)lo.hidden=!ok;const li=$('#loginBtn');if(li)li.hidden=ok;}
