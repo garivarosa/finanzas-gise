@@ -1,0 +1,14 @@
+{
+  "name": "Gestión de Facturación",
+  "short_name": "Facturación",
+  "start_url": "facturacion.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6fb",
+  "theme_color": "#3b5bdb",
+  "description": "Facturación y cobros de obras sociales",
+  "icons": [
+    { "src": "facturacion-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "facturacion-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

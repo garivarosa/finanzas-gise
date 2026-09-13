@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gestión de Facturación</title>
+<link rel="manifest" href="facturacion.webmanifest">
+<meta name="theme-color" content="#3b5bdb">
+<link rel="apple-touch-icon" href="facturacion-icon.svg">
+<link rel="icon" href="facturacion-icon.svg" type="image/svg+xml">
 <style>
   :root{
     --bg:#f4f6fb; --card:#ffffff; --ink:#1f2a44; --muted:#6b7793;
@@ -889,5 +893,6 @@ renderAll();
   initCloud();
 })();
 </script>
+<script>if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('fx-sw.js').catch(()=>{});</script>
 </body>
 </html>
