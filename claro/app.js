@@ -266,7 +266,7 @@ $('#simpleFields').addEventListener('click',e=>{if(!e.target.classList.contains(
 /* ---------- Navegación ---------- */
 function switchView(id){$$('.view').forEach(v=>v.classList.toggle('active',v.id===id));$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===id));window.scrollTo({top:0,behavior:'smooth'});}
 $$('[data-view]').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
-$('#openQuickAdd').onclick=openMovement;$('#openQuickAdd2').onclick=openMovement;$('#mobileAdd').onclick=openMovement;
+$('#openQuickAdd').onclick=openMovement;$('#openQuickAdd2')&&($('#openQuickAdd2').onclick=openMovement);$('#mobileAdd').onclick=openMovement;
 $('#addBudget').onclick=()=>openSimple('budget');$('#addGoal').onclick=()=>openSimple('goal');$('#addCategory').onclick=()=>openSimple('category');
 $('#addPayment')?.addEventListener('click',()=>openSimple('payment'));
 $('#setBank')?.addEventListener('click',()=>openSimple('bank'));
