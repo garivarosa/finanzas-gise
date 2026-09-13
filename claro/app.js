@@ -1,5 +1,6 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const currency=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n||0);
+const moneyCur=(n,cur)=>cur==='USD'?('US$ '+new Intl.NumberFormat('es-AR',{maximumFractionDigits:0}).format(n||0)):currency(n);
 const today=new Date().toISOString().slice(0,10);
 const curMonth=today.slice(0,7);
 const MONTHS_SHORT=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -67,7 +68,7 @@ function render(){
   const mn=$('#monthNext');if(mn)mn.disabled=esActual;
   $('#income').textContent=currency(sumByType(monthMovements(),'income'));
   $('#expense').textContent=currency(sumByType(monthMovements(),'expense'));
-  $('#savings').textContent=currency(state.goals.reduce((a,g)=>a+(Number(g.saved)||0),0));
+  const ahoArs=state.goals.filter(g=>(g.currency||'ARS')!=='USD').reduce((a,g)=>a+(Number(g.saved)||0),0);const ahoUsd=state.goals.filter(g=>g.currency==='USD').reduce((a,g)=>a+(Number(g.saved)||0),0);$('#savings').textContent=ahoUsd?(currency(ahoArs)+' · '+moneyCur(ahoUsd,'USD')):currency(ahoArs);
   if(bankMode){const mm=monthMovements();const el=$('#balance').parentElement.querySelector('.balance-change');if(el)el.innerHTML=`En ${monthLabel(viewMonth)}: entró ${currency(sumByType(mm,'income'))} · gastaste ${currency(sumByType(mm,'expense'))}`;}
   else renderComparison();
 
@@ -103,7 +104,7 @@ function renderBudgets(){
 }
 
 function renderGoals(){
-  $('#goalList').innerHTML=state.goals.map(g=>{let p=Math.min(100,g.saved/g.target*100);return `<article class="goal-card"><div class="card-actions"><button class="mini-btn js-del-goal" data-id="${g.id}">Borrar</button></div><div class="goal-icon">${g.icon}</div><h2>${escapeHtml(g.name)}</h2><div class="row"><strong>${currency(g.saved)}</strong><span>de ${currency(g.target)}</span></div><div class="progress-track"><div class="progress-fill" style="width:${p}%;background:#a79ae5"></div></div><p class="remaining">Te faltan ${currency(Math.max(0,g.target-g.saved))} · ${Math.round(p)}% alcanzado</p><button class="outline-button contribute" data-id="${g.id}">＋ Registrar aporte</button></article>`;}).join('')||'<p class="muted">Creá un objetivo para darle un nombre a tu ahorro.</p>';
+  $('#goalList').innerHTML=state.goals.map(g=>{const cur=g.currency||'ARS';let p=g.target?Math.min(100,g.saved/g.target*100):0;return `<article class="goal-card"><div class="card-actions"><button class="mini-btn js-edit-goal" data-id="${g.id}">Editar</button><button class="mini-btn danger js-del-goal" data-id="${g.id}">Borrar</button></div><div class="goal-icon">${g.icon}</div><h2>${escapeHtml(g.name)} ${cur==='USD'?'<span class="cur-chip">US$</span>':''}</h2>${g.place?`<p class="goal-place">📍 ${escapeHtml(g.place)}</p>`:''}<div class="row"><strong>${moneyCur(g.saved,cur)}</strong><span>de ${moneyCur(g.target,cur)}</span></div><div class="progress-track"><div class="progress-fill" style="width:${p}%;background:#a79ae5"></div></div><p class="remaining">Te faltan ${moneyCur(Math.max(0,g.target-g.saved),cur)} · ${Math.round(p)}% alcanzado</p><button class="outline-button contribute" data-id="${g.id}">＋ Registrar aporte</button></article>`;}).join('')||'<p class="muted">Creá un objetivo para darle un nombre a tu ahorro.</p>';
 }
 
 /* ---------- Gastos fijos ---------- */
@@ -185,9 +186,15 @@ function openSimple(kind,ref=''){
   }else if(kind==='editBudget'){
     const b=state.budgets[Number(ref)];$('#simpleEyebrow').textContent='PRESUPUESTO';$('#simpleTitle').textContent='Editar tope';
     f.innerHTML=`<label>Categoría<input value="${escapeHtml(b.category)}" disabled></label>`+fieldNumber('simpleAmount','',b.limit);
-  }else if(kind==='goal'){
-    $('#simpleEyebrow').textContent='OBJETIVO DE AHORRO';$('#simpleTitle').textContent='Nuevo objetivo';
-    f.innerHTML='<label>Nombre<input id="simpleName" placeholder="Ej. Viaje en familia" required></label>'+fieldNumber('simpleAmount','Monto objetivo')+'<label>¿Cuánto ya tenés ahorrado? <span style="font-weight:400">(opcional, no toca el banco)</span><input id="simpleSaved" type="number" min="0" placeholder="0"></label>'+'<label>Ícono<input id="simpleIcon" value="✦" maxlength="2"></label>';
+  }else if(kind==='goal'||kind==='editGoal'){
+    const g0=kind==='editGoal'?state.goals.find(x=>x.id===Number(ref)):null;
+    $('#simpleEyebrow').textContent='OBJETIVO DE AHORRO';$('#simpleTitle').textContent=g0?'Editar objetivo':'Nuevo objetivo';
+    f.innerHTML='<label>Nombre<input id="simpleName" placeholder="Ej. Dólares, Plazo fijo, Viaje" value="'+(g0?escapeHtml(g0.name):'')+'" required></label>'
+      +'<div class="form-grid"><label>Moneda<select id="simpleCur"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (US$)</option></select></label><label>Ícono<input id="simpleIcon" value="'+(g0?escapeHtml(g0.icon):'✦')+'" maxlength="2"></label></div>'
+      +'<label>Meta <span style="font-weight:400">(a cuánto querés llegar)</span><input id="simpleAmount" type="number" min="0" placeholder="Ej. 5000" value="'+(g0?g0.target:'')+'"></label>'
+      +'<label>¿Cuánto ya tenés ahorrado? <span style="font-weight:400">(no toca el banco)</span><input id="simpleSaved" type="number" min="0" placeholder="0" value="'+(g0?g0.saved:'')+'"></label>'
+      +'<label>¿Dónde está? <span style="font-weight:400">(opcional)</span><input id="simplePlace" placeholder="Ej. IOL, PPI, Banco, Efectivo" value="'+(g0&&g0.place?escapeHtml(g0.place):'')+'"></label>';
+    if(g0)$('#simpleCur').value=g0.currency||'ARS';
   }else if(kind==='category'){
     $('#simpleEyebrow').textContent='ORGANIZACIÓN';$('#simpleTitle').textContent='Nueva categoría';
     f.innerHTML='<label>Nombre de categoría<input id="simpleName" placeholder="Ej. Mascotas" required></label>';
@@ -218,8 +225,8 @@ function openSimple(kind,ref=''){
       +`<label>A esta fecha<input id="simpleDate" type="date" value="${state.saldoFecha||today}"></label>`
       +`<p class="small" style="color:var(--muted);margin-top:10px">Poné lo que tenés hoy en el banco/efectivo. De acá en más, cada ingreso y gasto que cargues actualiza este número solo.</p>`;
   }else{ // aporte a objetivo (kind = id numérico)
-    const goal=state.goals.find(g=>g.id===+kind);$('#simpleEyebrow').textContent='APORTE A '+(goal?goal.name.toUpperCase():'');$('#simpleTitle').textContent='Registrar aporte';
-    f.innerHTML=fieldNumber('simpleAmount','¿Cuánto sumás?');
+    const goal=state.goals.find(g=>g.id===+kind);const gc=goal?(goal.currency||'ARS'):'ARS';$('#simpleEyebrow').textContent='APORTE A '+(goal?goal.name.toUpperCase():'');$('#simpleTitle').textContent='Registrar aporte'+(gc==='USD'?' (US$)':'');
+    f.innerHTML=fieldNumber('simpleAmount',gc==='USD'?'¿Cuántos dólares sumás?':'¿Cuánto sumás?')+(gc==='USD'?'<p class="small" style="color:var(--muted);margin-top:8px">En dólares. No descuenta de tu "En el banco" (que está en pesos).</p>':'<p class="small" style="color:var(--muted);margin-top:8px">Sale de tu cuenta: descuenta de "En el banco".</p>');
   }
   f.insertAdjacentHTML('beforeend',delBtn);
   $('#simpleDialog').showModal();setTimeout(()=>f.querySelector('input,select')?.focus(),50);
@@ -233,14 +240,15 @@ function deletePayment(name){if(state.payments.length<=1){showToast('Dejá al me
 $('#simpleForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();const kind=e.currentTarget.dataset.kind,ref=e.currentTarget.dataset.ref;
   if(kind==='budget'){const cat=$('#simpleCategory').value,limit=Number($('#simpleAmount').value);const i=state.budgets.findIndex(b=>b.category===cat);if(i>=0)state.budgets[i].limit=limit;else state.budgets.push({category:cat,limit});}
   else if(kind==='editBudget'){state.budgets[Number(ref)].limit=Number($('#simpleAmount').value);}
-  else if(kind==='goal'){state.goals.push({id:Date.now(),name:$('#simpleName').value,target:Number($('#simpleAmount').value),saved:Number($('#simpleSaved').value)||0,icon:$('#simpleIcon').value||'✦'});}
+  else if(kind==='goal'){state.goals.push({id:Date.now(),name:$('#simpleName').value,target:Number($('#simpleAmount').value),saved:Number($('#simpleSaved').value)||0,icon:$('#simpleIcon').value||'✦',currency:$('#simpleCur').value,place:$('#simplePlace').value.trim()});}
+  else if(kind==='editGoal'){const g=state.goals.find(x=>x.id===Number(ref));if(g){g.name=$('#simpleName').value;g.target=Number($('#simpleAmount').value);g.saved=Number($('#simpleSaved').value)||0;g.icon=$('#simpleIcon').value||'✦';g.currency=$('#simpleCur').value;g.place=$('#simplePlace').value.trim();}}
   else if(kind==='category'){let n=$('#simpleName').value.trim();if(n&&!state.categories.includes(n))state.categories.push(n);}
   else if(kind==='editCategory'){renameCategory(ref,$('#simpleName').value.trim());}
   else if(kind==='payment'){let n=$('#simpleName').value.trim();if(n&&!state.payments.includes(n))state.payments.push(n);}
   else if(kind==='editPayment'){renamePayment(ref,$('#simpleName').value.trim());}
   else if(kind==='fixed'||kind==='editFixed'){const data={name:$('#simpleName').value.trim(),amount:Number($('#simpleAmount').value),category:$('#simpleCategory').value,dueDay:Math.min(31,Math.max(1,Number($('#simpleDay').value)||1)),payment:$('#simplePayment').value,professional:$('#simplePro').checked};if(kind==='editFixed'){const fx=state.fixed.find(x=>x.id===Number(ref));Object.assign(fx,data);}else{state.fixed.push({id:Date.now(),lastPaid:null,tags:[],...data});}}
   else if(kind==='bank'){state.saldoInicial=Number($('#simpleAmount').value)||0;state.saldoFecha=$('#simpleDate').value||today;}
-  else{let g=state.goals.find(g=>g.id===+kind),amount=Number($('#simpleAmount').value);if(g){g.saved+=amount;state.movements.push({id:Date.now(),type:'saving',amount,description:g.name,category:'Ahorro',payment:state.payments[0],date:today,tags:[],professional:false});}}
+  else{let g=state.goals.find(g=>g.id===+kind),amount=Number($('#simpleAmount').value);if(g){g.saved+=amount;if((g.currency||'ARS')!=='USD')state.movements.push({id:Date.now(),type:'saving',amount,description:g.name,category:'Ahorro',payment:state.payments[0],date:today,tags:[],professional:false});}}
   $('#simpleDialog').close();persist();showToast('Guardado correctamente');
 });
 
@@ -271,6 +279,7 @@ document.addEventListener('click',e=>{
   if(t.classList.contains('js-pay')){openSimple('editPayment',t.dataset.name);return;}
   if(t.classList.contains('js-edit-budget')){openSimple('editBudget',t.dataset.i);return;}
   if(t.classList.contains('js-del-budget')){if(confirm('¿Borrar este presupuesto?')){state.budgets.splice(Number(t.dataset.i),1);persist();showToast('Presupuesto borrado');}return;}
+  if(t.classList.contains('js-edit-goal')){openSimple('editGoal',t.dataset.id);return;}
   if(t.classList.contains('js-del-goal')){if(confirm('¿Borrar este objetivo de ahorro?')){state.goals=state.goals.filter(g=>g.id!==+t.dataset.id);persist();showToast('Objetivo borrado');}return;}
   if(t.classList.contains('js-edit-fixed')){openSimple('editFixed',t.dataset.id);return;}
   if(t.classList.contains('js-del-fixed')){if(confirm('¿Borrar este gasto fijo?')){state.fixed=state.fixed.filter(f=>f.id!==+t.dataset.id);persist();showToast('Gasto fijo borrado');}return;}
