@@ -227,7 +227,8 @@ function openSimple(kind,ref=''){
       +`<p class="small" style="color:var(--muted);margin-top:10px">Poné lo que tenés hoy en el banco/efectivo. De acá en más, cada ingreso y gasto que cargues actualiza este número solo.</p>`;
   }else{ // aporte a objetivo (kind = id numérico)
     const goal=state.goals.find(g=>g.id===+kind);const gc=goal?(goal.currency||'ARS'):'ARS';$('#simpleEyebrow').textContent='APORTE A '+(goal?goal.name.toUpperCase():'');$('#simpleTitle').textContent='Registrar aporte'+(gc==='USD'?' (US$)':'');
-    f.innerHTML=fieldNumber('simpleAmount',gc==='USD'?'¿Cuántos dólares sumás?':'¿Cuánto sumás?')+(gc==='USD'?'<p class="small" style="color:var(--muted);margin-top:8px">En dólares. No descuenta de tu "En el banco" (que está en pesos).</p>':'<p class="small" style="color:var(--muted);margin-top:8px">Sale de tu cuenta: descuenta de "En el banco".</p>');
+    if(gc==='USD'){f.innerHTML='<label>¿Cuántos dólares sumaste? <span style="font-weight:400">(US$)</span><input id="simpleAmount" type="number" min="0" placeholder="0"></label>'+'<label>¿Cuántos pesos saliste del banco? <span style="font-weight:400">(opcional; si los compraste con plata de la cuenta)</span><input id="simpleFromBank" type="number" min="0" placeholder="0"></label>'+'<p class="small" style="color:var(--muted);margin-top:8px">Suma los dólares a la bolsita y descuenta del banco los pesos que pusiste.</p>';}
+    else{f.innerHTML=fieldNumber('simpleAmount','¿Cuánto sumás?')+'<p class="small" style="color:var(--muted);margin-top:8px">Sale de tu cuenta: descuenta de "En el banco".</p>';}
   }
   f.insertAdjacentHTML('beforeend',delBtn);
   $('#simpleDialog').showModal();setTimeout(()=>f.querySelector('input,select')?.focus(),50);
@@ -249,7 +250,7 @@ $('#simpleForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')
   else if(kind==='editPayment'){renamePayment(ref,$('#simpleName').value.trim());}
   else if(kind==='fixed'||kind==='editFixed'){const data={name:$('#simpleName').value.trim(),amount:Number($('#simpleAmount').value),category:$('#simpleCategory').value,dueDay:Math.min(31,Math.max(1,Number($('#simpleDay').value)||1)),payment:$('#simplePayment').value,professional:$('#simplePro').checked};if(kind==='editFixed'){const fx=state.fixed.find(x=>x.id===Number(ref));Object.assign(fx,data);}else{state.fixed.push({id:Date.now(),lastPaid:null,tags:[],...data});}}
   else if(kind==='bank'){state.saldoInicial=Number($('#simpleAmount').value)||0;state.saldoFecha=$('#simpleDate').value||today;}
-  else{let g=state.goals.find(g=>g.id===+kind),amount=Number($('#simpleAmount').value);if(g){g.saved+=amount;if(typeof g.invested==='number')g.invested+=amount;if((g.currency||'ARS')!=='USD')state.movements.push({id:Date.now(),type:'saving',amount,description:g.name,category:'Ahorro',payment:state.payments[0],date:today,tags:[],professional:false});}}
+  else{let g=state.goals.find(g=>g.id===+kind),amount=Number($('#simpleAmount').value);if(g){g.saved+=amount;if(typeof g.invested==='number')g.invested+=amount;if((g.currency||'ARS')!=='USD'){state.movements.push({id:Date.now(),type:'saving',amount,description:g.name,category:'Ahorro',payment:state.payments[0],date:today,tags:[],professional:false});}else{const fromBank=Number($('#simpleFromBank')&&$('#simpleFromBank').value)||0;if(fromBank>0)state.movements.push({id:Date.now(),type:'saving',amount:fromBank,description:'Compra dólares · '+g.name,category:'Ahorro',payment:state.payments[0],date:today,tags:[],professional:false});}}}
   $('#simpleDialog').close();persist();showToast('Guardado correctamente');
 });
 
