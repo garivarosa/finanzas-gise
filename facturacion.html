@@ -53,6 +53,8 @@
   .pill.ok{background:var(--green-soft);color:var(--green)}
   .pill.no{background:var(--amber-soft);color:var(--amber)}
   .pill.parcial{background:#e7ecff;color:#3b5bdb}
+  .pill.anulada{background:#eef1f7;color:#8a94a6;text-decoration:line-through}
+  tr.anul td{opacity:.5}
   .cobcell{cursor:pointer;border-bottom:1px dashed #9fb0d6;font-weight:600}
   .cobcell:hover{color:var(--brand)}
   .tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;background:#eef1f7;color:var(--muted)}
@@ -134,6 +136,7 @@
           <option value="pend">Impagas — la obra social me debe</option>
           <option value="parcial">Pago parcial (cobré menos)</option>
           <option value="ok">Pagadas</option>
+          <option value="anulada">Anuladas</option>
         </select>
         <select id="regPrest">
           <option value="">Todas las prestaciones</option>
@@ -143,6 +146,7 @@
           <option value="reca">Recalificación</option>
           <option value="copago">Copago</option>
           <option value="domic">Domiciliarias</option>
+          <option value="pericia">Pericia / Recalif. particular</option>
         </select>
         <button class="btn ghost" id="regAdd">+ Agregar factura</button>
         <button class="btn soft" id="regGroup">📊 Agrupar por obra social</button>
@@ -229,9 +233,11 @@
       <label>Recalificación<input type="number" id="fReca" step="0.01"></label>
       <label>Copago<input type="number" id="fCop" step="0.01"></label>
       <label>Domiciliarias<input type="number" id="fDom" step="0.01"></label>
+      <label>Pericia / Recalif. particular<input type="number" id="fPericia" step="0.01"></label>
       <label class="full">Monto cobrado <span style="font-weight:400">(lo que realmente cobraste; dejalo en 0 si aún no cobraste)</span><input type="number" id="fCobM" step="0.01"></label>
       <label class="full">Fecha de cobro <span style="font-weight:400">(cuándo te pagaron; sirve para saber en qué mes ingresó)</span><input type="date" id="fCobF"></label>
       <label class="full">Observaciones <span style="font-weight:400">(ej: N° de Orden de Pago, comisión del Colegio/Asoc. Médica, etc.)</span><textarea id="fObs" rows="2"></textarea></label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:8px;font-weight:600"><input type="checkbox" id="fAnul" style="width:auto;margin:0"> 🚫 Factura ANULADA <span style="font-weight:400">(la dejás registrada pero NO cuenta en los totales)</span></label>
     </div>
     <div class="foot">
       <button class="btn soft" id="fDel" style="margin-right:auto;background:var(--red-soft);color:var(--red)">Eliminar</button>
@@ -368,8 +374,8 @@ function claseNueva(concepto){
   return 'Otro';
 }
 // estado según monto cobrado vs facturado
-function estadoOf(f){ const c=+f.cobradoMonto||0, s=+f.subtotal||0; if(c<=0.5) return 'pend'; if(c>=s-0.5) return 'ok'; return 'parcial'; }
-const EST_LBL={pend:'Impago',parcial:'Pago parcial',ok:'Pago'};
+function estadoOf(f){ if(f.anulada) return 'anulada'; const c=+f.cobradoMonto||0, s=+f.subtotal||0; if(c<=0.5) return 'pend'; if(c>=s-0.5) return 'ok'; return 'parcial'; }
+const EST_LBL={pend:'Impago',parcial:'Pago parcial',ok:'Pago',anulada:'Anulada'};
 
 let DB = load();
 function load(){
@@ -454,7 +460,7 @@ function fillYearSelect(sel, withAll){
 }
 function renderTablero(){
   const y = document.getElementById('tabYear').value;
-  const rows = DB.facturas.filter(f=> !y || f.anio==+y);
+  const rows = DB.facturas.filter(f=> (!y || f.anio==+y) && !f.anulada);
   const fact = rows.reduce((a,f)=>a+f.subtotal,0);
   const cob = rows.reduce((a,f)=>a+(+f.cobradoMonto||0),0);
   const pend = fact-cob;
@@ -466,7 +472,7 @@ function renderTablero(){
     card('Falta cobrar','amber',money(pend),nPend+' facturas para reclamar')+
     card('Ingresos no facturados','brand',money(ing),'copagos, férulas, particulares');
   // barras por categoria
-  const cats=[['Rehabilitación','rehab'],['PRR','prr'],['Recalificación','reca'],['Férulas','ferula'],['Copago','copago'],['Domiciliarias','domic']];
+  const cats=[['Rehabilitación','rehab'],['PRR','prr'],['Recalificación','reca'],['Férulas','ferula'],['Copago','copago'],['Domiciliarias','domic'],['Pericia','pericia']];
   const sums=cats.map(([lbl,k])=>[lbl, rows.reduce((a,f)=>a+(f[k]||0),0)]).sort((a,b)=>b[1]-a[1]);
   const max=Math.max(1,...sums.map(s=>s[1]));
   document.getElementById('tabBars').innerHTML = sums.map(([lbl,v])=>
@@ -499,7 +505,7 @@ function entidadDe(pag){
 // clave para detectar duplicados: misma fecha + mismo pagador + mismo monto
 function dupKey(f){ return (f.tipo||'').trim().toLowerCase()+'|'+(f.nro||'').toString().trim()+'|'+(f.fecha||'')+'|'+((f.pagador||'').trim().toLowerCase())+'|'+Math.round(+f.subtotal||0); }
 function catOf(f){
-  const cats=[['Rehabilitación','rehab'],['PRR','prr'],['Recalif.','reca'],['Férula','ferula'],['Copago','copago'],['Domic.','domic']];
+  const cats=[['Rehabilitación','rehab'],['PRR','prr'],['Recalif.','reca'],['Férula','ferula'],['Copago','copago'],['Domic.','domic'],['Pericia','pericia']];
   const hit=cats.filter(([l,k])=>f[k]>0);
   if(hit.length===1) return hit[0][0];
   if(hit.length>1) return 'Varias';
@@ -522,6 +528,7 @@ function renderRegistro(){
     if(est==='falta' && e==='ok') return false;
     if(est==='parcial' && e!=='parcial') return false;
     if(est==='ok' && e!=='ok') return false;
+    if(est==='anulada' && e!=='anulada') return false;
     return true;
   });
   if(regDup){ rows.sort((a,b)=>{ const ka=dupKey(a),kb=dupKey(b); return ka<kb?-1:(ka>kb?1:0); }); }
@@ -531,8 +538,8 @@ function renderRegistro(){
     if(regSort.k==='subtotal'||regSort.k==='nro'||regSort.k==='cobradoMonto'){va=+va||0;vb=+vb||0;}
     if(va<vb)return -1*regSort.dir; if(va>vb)return 1*regSort.dir; return 0;
   });
-  const tot=rows.reduce((a,f)=>a+f.subtotal,0);
-  const cob=rows.reduce((a,f)=>a+(+f.cobradoMonto||0),0);
+  const tot=rows.reduce((a,f)=>a+(f.anulada?0:f.subtotal),0);
+  const cob=rows.reduce((a,f)=>a+(f.anulada?0:(+f.cobradoMonto||0)),0);
   document.getElementById('regCards').innerHTML=
     card('Facturas mostradas','brand',rows.length,'')+
     card('Facturado mostrado','brand',money(tot),'')+
@@ -543,7 +550,7 @@ function renderRegistro(){
   if(regGrouped){
     dw.style.display='none'; gw.style.display='';
     const byPag={};
-    rows.forEach(f=>{ const k=(f.pagador||'').trim()||'(sin nombre)'; (byPag[k]=byPag[k]||{n:0,fact:0,cob:0}); byPag[k].n++; byPag[k].fact+=(+f.subtotal||0); byPag[k].cob+=(+f.cobradoMonto||0); });
+    rows.forEach(f=>{ if(f.anulada)return; const k=(f.pagador||'').trim()||'(sin nombre)'; (byPag[k]=byPag[k]||{n:0,fact:0,cob:0}); byPag[k].n++; byPag[k].fact+=(+f.subtotal||0); byPag[k].cob+=(+f.cobradoMonto||0); });
     const arr=Object.entries(byPag).map(([k,o])=>({pag:k,n:o.n,fact:o.fact,cob:o.cob,falta:o.fact-o.cob})).sort((a,b)=>b.falta-a.falta);
     const gtb=arr.map(o=>`<tr><td>${o.pag}</td><td style="text-align:center">${o.n}</td><td class="money">${money(o.fact)}</td><td class="money">${money(o.cob)}</td><td class="money" style="font-weight:800;color:var(--amber)">${money(o.falta)}</td></tr>`).join('');
     gw.innerHTML=`<table><thead><tr><th>Obra social / Paciente</th><th style="text-align:center">Facturas</th><th class="money">Facturado</th><th class="money">Cobrado</th><th class="money">Falta cobrar</th></tr></thead><tbody>${gtb||'<tr><td colspan="5" class="empty">Sin datos con esos filtros</td></tr>'}</tbody></table>`;
@@ -551,8 +558,8 @@ function renderRegistro(){
     dw.style.display=''; gw.style.display='none';
   }
   const tb=rows.map(f=>{
-    const e=estadoOf(f), cls=e==='ok'?'ok':(e==='parcial'?'parcial':'no');
-    return `<tr>
+    const e=estadoOf(f), cls=e==='anulada'?'anulada':(e==='ok'?'ok':(e==='parcial'?'parcial':'no'));
+    return `<tr class="${f.anulada?'anul':''}">
     <td>${dmy(f.fecha)}</td><td><span class="tag">${f.tipo||'—'}</span></td><td>${f.nro||''}</td>
     <td>${f.pagador||'<i style="color:#aaa">(sin nombre)</i>'}${f.obs?` <span title="${(f.obs||'').replace(/"/g,'&quot;')}" style="cursor:help">📝</span>`:''}</td><td>${catOf(f)}</td>
     <td class="money">${money(f.subtotal)}</td>
@@ -706,10 +713,11 @@ function openFac(id){
   document.getElementById('mFacTitle').textContent = id?'Editar factura':'Agregar factura';
   const S=(k,v)=>document.getElementById(k).value=v??'';
   S('fPag',f.pagador);S('fFecha',f.fecha);S('fTipo',f.tipo);S('fNro',f.nro);S('fSub',f.subtotal);
-  S('fRehab',f.rehab);S('fFer',f.ferula);S('fPrr',f.prr);S('fReca',f.reca);S('fCop',f.copago);S('fDom',f.domic);
+  S('fRehab',f.rehab);S('fFer',f.ferula);S('fPrr',f.prr);S('fReca',f.reca);S('fCop',f.copago);S('fDom',f.domic);S('fPericia',f.pericia);
   S('fCobM', id? (f.cobradoMonto||0) : 0);
   S('fCobF', id? (f.cobradoFecha||'') : '');
   S('fObs', f.obs);
+  document.getElementById('fAnul').checked = !!f.anulada;
   recalcTotal();
   document.getElementById('fDel').style.display = id?'':'none';
   document.getElementById('mFac').classList.add('open');
@@ -717,10 +725,10 @@ function openFac(id){
 // el Total se calcula solo: suma de las 6 categorías
 function recalcTotal(){
   const num=id=>+document.getElementById(id).value||0;
-  const t=num('fRehab')+num('fFer')+num('fPrr')+num('fReca')+num('fCop')+num('fDom');
+  const t=num('fRehab')+num('fFer')+num('fPrr')+num('fReca')+num('fCop')+num('fDom')+num('fPericia');
   document.getElementById('fSub').value = t? Math.round(t*100)/100 : '';
 }
-['fRehab','fFer','fPrr','fReca','fCop','fDom'].forEach(id=>document.getElementById(id).addEventListener('input',recalcTotal));
+['fRehab','fFer','fPrr','fReca','fCop','fDom','fPericia'].forEach(id=>document.getElementById(id).addEventListener('input',recalcTotal));
 document.getElementById('regAdd').onclick=()=>openFac(null);
 document.getElementById('regGroup').onclick=()=>{ regGrouped=!regGrouped; document.getElementById('regGroup').textContent=regGrouped?'📋 Ver lista detallada':'📊 Agrupar por obra social'; renderRegistro(); };
 document.getElementById('regDupBtn').onclick=()=>{ regDup=!regDup; document.getElementById('regDupBtn').textContent=regDup?'✅ Ver todas':'⚠️ Ver duplicados'; document.getElementById('regDupBtn').style.background=regDup?'var(--amber-soft)':''; renderRegistro(); };
@@ -730,10 +738,10 @@ document.getElementById('fSave').onclick=()=>{
   const iso=g('fFecha')||new Date().toISOString().slice(0,10);
   let f = facEditId? DB.facturas.find(x=>x.id===facEditId) : null;
   if(!f){ f={id:nextId()}; DB.facturas.push(f); }
-  const totalCat=num('fRehab')+num('fFer')+num('fPrr')+num('fReca')+num('fCop')+num('fDom');
+  const totalCat=num('fRehab')+num('fFer')+num('fPrr')+num('fReca')+num('fCop')+num('fDom')+num('fPericia');
   Object.assign(f,{pagador:g('fPag').trim(),fecha:iso,tipo:g('fTipo').trim(),nro:g('fNro').trim(),
-    subtotal:totalCat,rehab:num('fRehab'),ferula:num('fFer'),prr:num('fPrr'),reca:num('fReca'),copago:num('fCop'),domic:num('fDom'),
-    anio:+iso.slice(0,4),mes:+iso.slice(5,7),cobradoMonto:num('fCobM'),cobrado:num('fCobM')>0.5,cobradoFecha:(num('fCobM')>0.5?(g('fCobF')||new Date().toISOString().slice(0,10)):''),obs:g('fObs').trim()});
+    subtotal:totalCat,rehab:num('fRehab'),ferula:num('fFer'),prr:num('fPrr'),reca:num('fReca'),copago:num('fCop'),domic:num('fDom'),pericia:num('fPericia'),
+    anio:+iso.slice(0,4),mes:+iso.slice(5,7),cobradoMonto:num('fCobM'),cobrado:num('fCobM')>0.5,cobradoFecha:(num('fCobM')>0.5?(g('fCobF')||new Date().toISOString().slice(0,10)):''),obs:g('fObs').trim(),anulada:document.getElementById('fAnul').checked});
   save(); closeModals(); renderRegistro(); renderTablero(); fillPagadores(); fillYearSelect(document.getElementById('tabYear'),false); fillYearSelect(document.getElementById('regYear'),true);
 };
 document.getElementById('fDel').onclick=()=>{
