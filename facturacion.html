@@ -100,6 +100,7 @@
   <button data-tab="registro">🧾 Registro</button>
   <button data-tab="directorio">📇 ¿A quién le facturo?</button>
   <button data-tab="ingresos">💵 Ingresos no facturados</button>
+  <button data-tab="monotributo">📋 Monotributo</button>
   <button data-tab="datos">💾 Copia de seguridad</button>
 </nav>
 <main>
@@ -195,6 +196,27 @@
           <th data-k="fecha">Fecha</th><th data-k="concepto">Concepto</th><th data-k="categoria">Categoría</th><th data-k="monto" class="money">Monto</th><th></th>
         </tr></thead><tbody></tbody></table>
       </div>
+    </div>
+  </section>
+
+  <!-- MONOTRIBUTO -->
+  <section id="monotributo" class="view">
+    <div class="hint">Control de tu categoría de Monotributo según lo que facturás (solo <b>Facturas C</b>, desde 2026). Es una <b>ayuda</b> — el cálculo oficial confirmalo con tu contador/ARCA. La recategorización es en <b>enero y julio</b>.</div>
+    <div class="toolbar">
+      <strong>Año:</strong> <select id="monoYear"></select>
+    </div>
+    <div class="cards" id="monoCards"></div>
+    <div class="panel">
+      <h2>¿En qué categoría estás? (según lo facturado)</h2>
+      <div class="bars" id="monoBar" style="margin-bottom:14px"></div>
+      <div class="table-wrap">
+        <table id="monoTable"><thead><tr><th>Cat.</th><th class="money">Tope facturación anual</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px">Topes de servicios (A–H) vigentes desde 1/08/2026 (arca.gob.ar). Cambian ~cada 6 meses; si se actualizan, avisame y los cambio.</p>
+    </div>
+    <div class="panel">
+      <h2>Mes a mes (Facturas C)</h2>
+      <div class="table-wrap"><table id="monoMes"><thead><tr><th>Mes</th><th class="money">Facturado C</th><th class="money">Acumulado</th></tr></thead><tbody></tbody></table></div>
     </div>
   </section>
 
@@ -815,6 +837,57 @@ document.getElementById('btnReset').onclick=()=>{
   if(confirm('¿Volver a los datos originales? Se pierde lo que hayas cambiado.')){ DB=seedBuild(); save(); renderAll(); alert('Datos originales restaurados.'); }
 };
 
+// ---------- MONOTRIBUTO ----------
+// Topes de "Ingresos brutos anuales" para SERVICIOS (A-H), vigentes desde 1/08/2026 (arca.gob.ar)
+const MONO_CATS=[['A',12009410.45],['B',17595182.74],['C',24670494.31],['D',30628651.43],['E',36028231.33],['F',45151659.41],['G',53995798.87],['H',81924660.37]];
+function monoCatDe(v){ for(const [c,lim] of MONO_CATS) if(v<=lim) return c; return null; } // null = supera H (fuera de monotributo)
+function fillMonoYear(){
+  const ys=[...new Set(DB.facturas.filter(f=>(f.tipo||'').trim().toUpperCase()==='C').map(f=>f.anio).filter(Boolean))].sort((a,b)=>b-a);
+  const sel=document.getElementById('monoYear'); const prev=sel.value; sel.innerHTML='';
+  (ys.length?ys:[new Date().getFullYear()]).forEach(y=>sel.appendChild(new Option(y,y)));
+  if(prev)sel.value=prev;
+}
+function renderMonotributo(){
+  const y=+document.getElementById('monoYear').value || new Date().getFullYear();
+  const cRows=DB.facturas.filter(f=>(f.tipo||'').trim().toUpperCase()==='C' && f.anio===y && !f.anulada);
+  const total=cRows.reduce((a,f)=>a+(+f.subtotal||0),0);
+  // meses con actividad
+  const porMes={}; cRows.forEach(f=>{const m=+((f.fecha||'').slice(5,7))||f.mes; porMes[m]=(porMes[m]||0)+(+f.subtotal||0);});
+  const mesesAct=Object.keys(porMes).map(Number).sort((a,b)=>a-b);
+  const primer=mesesAct[0]||1, ultimo=mesesAct[mesesAct.length-1]||1;
+  const nMeses=ultimo-primer+1;
+  const proy=nMeses?total/nMeses*12:0;
+  const catAcum=monoCatDe(total), catProy=monoCatDe(proy);
+  const topeH=MONO_CATS[MONO_CATS.length-1][1];
+  // categoría actual (según acumulado) y siguiente tope
+  let sigLim=null,sigCat=null;
+  for(const [c,lim] of MONO_CATS){ if(total<=lim){ sigLim=lim; sigCat=c; break; } }
+  const margen = sigLim? sigLim-total : (topeH-total);
+  document.getElementById('monoCards').innerHTML=
+    card('Facturado C '+y,'brand',money(total),cRows.length+' facturas C'+(nMeses?' · '+nMeses+' meses':''))+
+    card('Categoría (por lo facturado)', catAcum?'green':'amber', catAcum? 'Cat. '+catAcum : '⚠️ supera H', catAcum? 'según acumulado':'quedarías fuera de monotributo')+
+    card('Margen hasta el próximo tope','amber', money(Math.max(0,margen)), sigCat?('para pasar de '+catAcum+' a la siguiente'):'ya en la última (H)')+
+    card('Proyección anual','brand', money(proy), catProy? 'daría Cat. '+catProy+' (estimado para enero)':'⚠️ proyecta fuera de monotributo');
+  // barra hacia el techo de H
+  const pct=Math.min(100,total/topeH*100);
+  const near=total>=MONO_CATS[6][1]; // >= tope G
+  document.getElementById('monoBar').innerHTML=
+    '<div class="row"><div>Hacia el techo de H</div><div class="track"><div class="fill" style="width:'+pct.toFixed(1)+'%;background:'+(near?'linear-gradient(90deg,#f0a020,#d64545)':'linear-gradient(90deg,#5c7cfa,#3b5bdb)')+'"></div></div><div class="amt">'+money(total)+' / '+money(topeH)+'</div></div>'+
+    (catAcum===null?'<p style="color:var(--red);font-weight:700;margin-top:8px">⚠️ Superaste el tope de H: quedarías fuera del Monotributo (Responsable Inscripto).</p>':(near?'<p style="color:var(--amber);font-weight:700;margin-top:8px">⚠️ Estás en las categorías altas. Ojo con no pasar el techo de H.</p>':''));
+  // tabla de categorías
+  document.querySelector('#monoTable tbody').innerHTML=MONO_CATS.map(([c,lim])=>{
+    const aqui = catAcum===c;
+    const falta = lim-total;
+    return '<tr style="'+(aqui?'background:var(--green-soft);font-weight:800':'')+'"><td>'+c+(aqui?' ← acá estás':'')+'</td><td class="money">'+money(lim)+'</td><td class="money" style="color:var(--muted)">'+(falta>0?'te faltan '+money(falta):'—')+'</td></tr>';
+  }).join('');
+  // mes a mes
+  let acum=0,tb='';
+  const MESN=['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  for(let m=1;m<=12;m++){ if(porMes[m]===undefined)continue; acum+=porMes[m]; tb+='<tr><td>'+MESN[m]+'</td><td class="money">'+money(porMes[m])+'</td><td class="money">'+money(acum)+'</td></tr>'; }
+  document.querySelector('#monoMes tbody').innerHTML=tb||'<tr><td colspan="3" class="empty">Sin Facturas C en '+y+'</td></tr>';
+}
+document.getElementById('monoYear').addEventListener('input',renderMonotributo);
+
 // ---------- init ----------
 function renderAll(){
   fillYearSelect(document.getElementById('tabYear'),false);
@@ -822,7 +895,8 @@ function renderAll(){
   fillIngSelects();
   fillDirSelects();
   fillPagadores();
-  renderTablero(); renderRegistro(); renderDir(); renderIng();
+  fillMonoYear();
+  renderTablero(); renderRegistro(); renderDir(); renderIng(); renderMonotributo();
   updateSavedBadge();
 }
 renderAll();
