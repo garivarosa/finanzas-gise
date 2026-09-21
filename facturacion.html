@@ -309,6 +309,7 @@
     <div class="foot">
       <button class="btn soft" id="iDel" style="margin-right:auto;background:var(--red-soft);color:var(--red)">Eliminar</button>
       <button class="btn soft" data-close>Cancelar</button>
+      <button class="btn ghost" id="iToFac">➡️ Pasar a factura</button>
       <button class="btn" id="iSave">Guardar</button>
     </div>
   </div>
@@ -679,8 +680,25 @@ function openIng(id){
   const S=(k,v)=>document.getElementById(k).value=v??'';
   S('iConc',i.concepto);S('iFecha',i.fecha);S('iCat',i.categoria||'Otro');S('iMonto',i.monto);S('iNotas',i.notas);
   document.getElementById('iDel').style.display=id?'':'none';
+  document.getElementById('iToFac').style.display=id?'':'none';
   document.getElementById('mIng').classList.add('open');
 }
+let convertingIngId=null;
+document.getElementById('iToFac').onclick=()=>{
+  if(!ingEditId)return; const i=DB.ingresos.find(x=>x.id===ingEditId); if(!i)return;
+  const savedId=ingEditId;
+  closeModals(); openFac(null);           // openFac resetea convertingIngId
+  convertingIngId=savedId;                 // se setea DESPUÉS
+  const setV=(id,v)=>{const el=document.getElementById(id);el.value=v;el.dispatchEvent(new Event('input'));};
+  document.getElementById('fPag').value=i.concepto||'';
+  document.getElementById('fFecha').value=i.fecha||new Date().toISOString().slice(0,10);
+  const map={'Copago':'fCop','Férula':'fFer','Sesión particular':'fRehab','Otro':'fRehab'};
+  setV(map[i.categoria]||'fRehab', i.monto||0);      // pone el monto en la categoría → recalcula el total
+  document.getElementById('fCobM').value=i.monto||0; // ya está cobrado
+  document.getElementById('fCobF').value=i.fecha||'';
+  document.getElementById('fObs').value='Venía de: '+(i.concepto||'')+(i.notas?(' · '+i.notas):'');
+  document.getElementById('mFacTitle').textContent='Pasar a factura (era un copago/ingreso)';
+};
 ['ingSearch','ingYear','ingCat'].forEach(id=>document.getElementById(id).addEventListener('input',renderIng));
 document.querySelectorAll('#ingTable th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k;ingSort.dir=(ingSort.k===k)?-ingSort.dir:1;ingSort.k=k;renderIng();});
 document.getElementById('ingAdd').onclick=()=>openIng(null);
@@ -730,7 +748,7 @@ document.getElementById('dirGrid').addEventListener('click',e=>{
 // ---------- modal factura ----------
 let facEditId=null;
 function openFac(id){
-  facEditId=id;
+  facEditId=id; convertingIngId=null;
   const f = id? DB.facturas.find(x=>x.id===id) : {fecha:new Date().toISOString().slice(0,10), tipo:'C'};
   document.getElementById('mFacTitle').textContent = id?'Editar factura':'Agregar factura';
   const S=(k,v)=>document.getElementById(k).value=v??'';
@@ -764,6 +782,8 @@ document.getElementById('fSave').onclick=()=>{
   Object.assign(f,{pagador:g('fPag').trim(),fecha:iso,tipo:g('fTipo').trim(),nro:g('fNro').trim(),
     subtotal:totalCat,rehab:num('fRehab'),ferula:num('fFer'),prr:num('fPrr'),reca:num('fReca'),copago:num('fCop'),domic:num('fDom'),pericia:num('fPericia'),
     anio:+iso.slice(0,4),mes:+iso.slice(5,7),cobradoMonto:num('fCobM'),cobrado:num('fCobM')>0.5,cobradoFecha:(num('fCobM')>0.5?(g('fCobF')||new Date().toISOString().slice(0,10)):''),obs:g('fObs').trim(),anulada:document.getElementById('fAnul').checked});
+  // si esta factura vino de "Pasar a factura", borro el copago/ingreso original (para no duplicar)
+  if(convertingIngId){ DB.ingresos=DB.ingresos.filter(x=>x.id!==convertingIngId); convertingIngId=null; renderIng(); fillIngSelects(); }
   save(); closeModals(); renderRegistro(); renderTablero(); fillPagadores(); fillYearSelect(document.getElementById('tabYear'),false); fillYearSelect(document.getElementById('regYear'),true);
 };
 document.getElementById('fDel').onclick=()=>{
