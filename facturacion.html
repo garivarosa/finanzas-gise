@@ -189,6 +189,7 @@
         <select id="ingYear"></select>
         <select id="ingCat"><option value="">Todas las categorías</option></select>
         <button class="btn ghost" id="ingAdd">+ Agregar ingreso</button>
+        <button class="btn" id="ingImport" title="Trae los pagos que la secre cargó en RehabMano. No trae dos veces el mismo.">📥 Traer de RehabMano</button>
       </div>
       <div class="cards" id="ingCards"></div>
       <div class="table-wrap">
@@ -703,6 +704,49 @@ document.getElementById('iToFac').onclick=()=>{
 document.querySelectorAll('#ingTable th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k;ingSort.dir=(ingSort.k===k)?-ingSort.dir:1;ingSort.k=k;renderIng();});
 document.getElementById('ingAdd').onclick=()=>openIng(null);
 document.getElementById('ingTable').addEventListener('click',e=>{const ed=e.target.closest('[data-iedit]');if(ed)openIng(ed.dataset.iedit);});
+
+// ---------- Traer pagos de RehabMano (misma nube Supabase) ----------
+const RM_CAT_MAP={'Coseguro':'Copago','Confección de férula':'Férula','Sesiones particulares':'Sesión particular','Evaluación':'Otro','Otros':'Otro'};
+async function importarRehab(){
+  const btn=document.getElementById('ingImport');
+  const sb=window.GF_SB;
+  if(!sb){ alert('La conexión a la nube todavía no está lista. Esperá unos segundos y recargá la página.'); return; }
+  const ses=await sb.auth.getSession();
+  if(!ses.data || !ses.data.session){ alert('Para traer los pagos de RehabMano tenés que estar dentro de tu cuenta (el login de arriba, el mismo mail de RehabMano). Si entraste como "sin conexión", no puedo leer RehabMano.'); return; }
+  btn.disabled=true; const t=btn.textContent; btn.textContent='Trayendo…';
+  try{
+    const pr=await sb.from('payments').select('id,patient_id,amount,payment_reason,payment_method,payment_date,notes').order('payment_date',{ascending:false});
+    if(pr.error) throw pr.error;
+    const pays=pr.data||[];
+    const ids=[...new Set(pays.map(p=>p.patient_id).filter(Boolean))];
+    let names={};
+    if(ids.length){ const qr=await sb.from('patients').select('id,full_name').in('id',ids); if(!qr.error){ (qr.data||[]).forEach(p=>names[p.id]=p.full_name); } }
+    if(!DB.ingresos)DB.ingresos=[];
+    if(!DB.rmImported)DB.rmImported=[];
+    const yaSet=new Set(DB.rmImported);
+    let nuevos=0;
+    pays.forEach(p=>{
+      if(yaSet.has(p.id)) return;               // ya se trajo antes (aunque se haya pasado a factura) → no duplicar
+      const nombre=names[p.patient_id]||'Paciente';
+      DB.ingresos.push({
+        id:nextId(), rmId:p.id,
+        fecha:p.payment_date||'',
+        concepto:nombre+' · '+(p.payment_reason||''),
+        categoria:RM_CAT_MAP[p.payment_reason]||'Otro',
+        monto:+p.amount||0,
+        notas:'De RehabMano ('+(p.payment_method||'')+')'+(p.notes?(' · '+p.notes):'')
+      });
+      DB.rmImported.push(p.id); nuevos++;
+    });
+    if(nuevos>0){ save(); renderIng(); fillIngSelects(); renderTablero(); }
+    alert(nuevos>0
+      ? ('Listo ✅ Traje '+nuevos+' pago(s) nuevo(s) de RehabMano.\nYa están en "Ingresos no facturados". Si a alguno te piden factura, usá el botón "Pasar a factura".')
+      : 'No hay pagos nuevos en RehabMano. Ya están todos acá. 👍');
+  }catch(e){
+    alert('No se pudo traer de RehabMano: '+((e&&e.message)||e));
+  }finally{ btn.disabled=false; btn.textContent=t; }
+}
+document.getElementById('ingImport').onclick=importarRehab;
 document.getElementById('iSave').onclick=()=>{
   const g=id=>document.getElementById(id).value;
   const iso=g('iFecha')||new Date().toISOString().slice(0,10);
@@ -938,7 +982,7 @@ renderAll();
     var row=res.data;
     if(row && row.data && row.data.facturas){
       applyingRemote=true;
-      DB=row.data; if(!DB.ingresos)DB.ingresos=[];
+      DB=row.data; if(!DB.ingresos)DB.ingresos=[]; if(!DB.rmImported)DB.rmImported=[];
       try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){}
       renderAll();
       applyingRemote=false;
@@ -985,6 +1029,7 @@ renderAll();
   function initCloud(){
     if(!CFG || !window.supabase){ return; }
     sb=window.supabase.createClient(CFG.url, CFG.anonKey);
+    window.GF_SB=sb; // para leer los pagos de RehabMano (misma base)
     wireAuth();
     showAuth(); // mostramos el login ya; se oculta solo si hay sesión activa
     sb.auth.getSession().then(function(r){ if(r.data && r.data.session) onLogin(r.data.session); });
